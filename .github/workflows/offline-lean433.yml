@@ -1,0 +1,187 @@
+name: Public Lean 4.33 offline dependencies
+
+on:
+  push:
+    branches: ['tools/offline-lean433-20260917']
+    paths: ['.github/workflows/offline-lean433.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-public-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LEAN_NUM_THREADS: 2
+      MATHLIB_REV: db584cd6d46c92f209a44c0f1c829460d327499d
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Prepare only public upstream dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lean-offline/workspace" offline-export
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$RUNNER_TEMP/elan-init.sh"
+          bash "$RUNNER_TEMP/elan-init.sh" -y --default-toolchain leanprover/lean4:v4.33.0
+          export PATH="$HOME/.elan/bin:$PATH"
+          cd "$RUNNER_TEMP/lean-offline/workspace"
+          printf '%s\n' 'leanprover/lean4:v4.33.0' > lean-toolchain
+          cat > lakefile.toml <<'EOF'
+          name = "offline-dependencies"
+          version = "0.1.0"
+          [[require]]
+          name = "mathlib"
+          git = "https://github.com/leanprover-community/mathlib4.git"
+          rev = "db584cd6d46c92f209a44c0f1c829460d327499d"
+          EOF
+          lake update
+          test "$(git -C .lake/packages/mathlib rev-parse HEAD)" = "$MATHLIB_REV"
+          lake exe cache get
+          cat > OfflineSmoke.lean <<'EOF'
+          import Mathlib
+          example : (2 : ℚ) * (1414 / 100 : ℚ) = (2828 / 100 : ℚ) := by norm_num
+          example (x : ℝ) : (x + 1)^2 = x^2 + 2*x + 1 := by ring
+          EOF
+          lake env lean OfflineSmoke.lean
+          SYSROOT="$(lean --print-prefix)"
+          ln -s "$SYSROOT" "$RUNNER_TEMP/lean-offline/toolchain"
+          {
+            printf 'Dependency-preparation run, not a research-proof certificate.\n'
+            printf 'Only public Lean and mathlib dependencies are included.\n'
+            printf 'run_id=%s\nworkflow_commit=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA"
+            lean --version
+            printf 'mathlib_revision=%s\n' "$(git -C .lake/packages/mathlib rev-parse HEAD)"
+            sha256sum lean-toolchain lakefile.toml lake-manifest.json "$SYSROOT/bin/lean" "$SYSROOT/bin/leanchecker"
+            for p in .lake/packages/*; do
+              printf '%s ' "$(basename "$p")"
+              git -C "$p" rev-parse HEAD
+            done
+          } > "$RUNNER_TEMP/lean-offline/PROVENANCE.txt"
+          du -sh "$SYSROOT" .lake/packages
+      - name: Package portable elaboration environment and split into bounded parts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -h --exclude='.git' --exclude='node_modules' --exclude='*.a' --exclude='*.c' --exclude='*.o' --exclude='*/build/ir' --exclude='*.woff' --exclude='*.woff2' --exclude='*.ttf' --exclude='*.otf' --exclude='*.ltar' -I 'zstd -T2 -3' -cf "$RUNNER_TEMP/public-dependencies.tar.zst" -C "$RUNNER_TEMP/lean-offline" .
+          cp "$RUNNER_TEMP/lean-offline/PROVENANCE.txt" offline-export/PROVENANCE.txt
+          sha256sum "$RUNNER_TEMP/public-dependencies.tar.zst" > offline-export/archive.sha256.txt
+          split -b 250M -d -a 2 "$RUNNER_TEMP/public-dependencies.tar.zst" offline-export/part-
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path('offline-export')
+          parts = sorted(root.glob('part-*'))
+          if not parts or len(parts) > 12:
+              raise SystemExit('Unexpected dependency archive size; do not silently omit a part')
+          def digest(p):
+              h = hashlib.sha256()
+              with p.open('rb') as f:
+                  for chunk in iter(lambda: f.read(1024*1024), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+          result = {'kind': 'public_upstream_dependencies_only', 'private_sources': False,
+                    'lean_version': '4.33.0', 'mathlib_revision': os.environ['MATHLIB_REV'],
+                    'run_id': os.environ['GITHUB_RUN_ID'], 'workflow_commit': os.environ['GITHUB_SHA'],
+                    'archive_sha256': root.joinpath('archive.sha256.txt').read_text().split()[0],
+                    'parts': [{'name': p.name, 'size': p.stat().st_size, 'sha256': digest(p)} for p in parts]}
+          root.joinpath('MANIFEST.json').write_text(json.dumps(result, indent=2) + '\n')
+          print(json.dumps(result, indent=2))
+          PY
+          rm "$RUNNER_TEMP/public-dependencies.tar.zst"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: offline-433-manifest
+          path: |
+            offline-export/MANIFEST.json
+            offline-export/PROVENANCE.txt
+            offline-export/archive.sha256.txt
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: offline-433-part-00
+          path: offline-export/part-00
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-01') != ''
+        with:
+          name: offline-433-part-01
+          path: offline-export/part-01
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-02') != ''
+        with:
+          name: offline-433-part-02
+          path: offline-export/part-02
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-03') != ''
+        with:
+          name: offline-433-part-03
+          path: offline-export/part-03
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-04') != ''
+        with:
+          name: offline-433-part-04
+          path: offline-export/part-04
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-05') != ''
+        with:
+          name: offline-433-part-05
+          path: offline-export/part-05
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-06') != ''
+        with:
+          name: offline-433-part-06
+          path: offline-export/part-06
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-07') != ''
+        with:
+          name: offline-433-part-07
+          path: offline-export/part-07
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-08') != ''
+        with:
+          name: offline-433-part-08
+          path: offline-export/part-08
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-09') != ''
+        with:
+          name: offline-433-part-09
+          path: offline-export/part-09
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-10') != ''
+        with:
+          name: offline-433-part-10
+          path: offline-export/part-10
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: hashFiles('offline-export/part-11') != ''
+        with:
+          name: offline-433-part-11
+          path: offline-export/part-11
+          compression-level: 0
+          retention-days: 1
