@@ -68,6 +68,7 @@ jobs:
           cat > CoxeterPinnedSmoke.lean <<'EOF'
           import Mathlib.GroupTheory.Coxeter.Dihedral
           open CoxeterMatrix.I
+          noncomputable section
           example (m : Nat) : (CoxeterMatrix.I m).Group ≃* DihedralGroup (m + 2) :=
             groupEquivDihedralGroup m
           example (m : Nat) :
