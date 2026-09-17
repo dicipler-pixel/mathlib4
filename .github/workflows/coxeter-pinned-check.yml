@@ -1,0 +1,163 @@
+name: Pinned Coxeter bridge verification
+
+on:
+  push:
+    branches: ['verify/coxeter-cad21f52-20260917']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-coxeter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LEAN_NUM_THREADS: 2
+      SOURCE_COMMIT: cad21f52e8c5664dedfcd12318e27016591aacaf
+      SOURCE_BLOB: 4173937650e1abbd7764cf10033d702798999308
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify unchanged public source and dependency snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p coxeter-evidence
+          git diff --exit-code "$SOURCE_COMMIT" HEAD -- . ':!.github/workflows/coxeter-pinned-check.yml'
+          test "$(git hash-object Mathlib/GroupTheory/Coxeter/Dihedral.lean)" = "$SOURCE_BLOB"
+          {
+            printf 'public_source_commit=%s\n' "$SOURCE_COMMIT"
+            printf 'public_source_blob=%s\n' "$SOURCE_BLOB"
+            printf 'verification_commit=%s\n' "$(git rev-parse HEAD)"
+            printf 'run_id=%s\nrun_attempt=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            cat lean-toolchain
+            sha256sum Mathlib/GroupTheory/Coxeter/Dihedral.lean lean-toolchain lakefile.lean lake-manifest.json
+          } > coxeter-evidence/source.txt
+      - name: Install the pinned Lean toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$RUNNER_TEMP/elan-init.sh"
+          bash "$RUNNER_TEMP/elan-init.sh" -y --default-toolchain "$(cat lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Download only the imported mathlib dependency caches
+        shell: bash
+        run: |
+          set -euo pipefail
+          lake exe cache get Mathlib/GroupTheory/Coxeter/Basic.lean Mathlib/GroupTheory/SpecificGroups/Dihedral.lean Mathlib/Tactic/FinCases.lean Mathlib/Tactic/Group.lean 2>&1 | tee coxeter-evidence/cache.log
+          lake env lean --version >> coxeter-evidence/source.txt
+      - name: Build and directly elaborate the exact module
+        shell: bash
+        run: |
+          set -euo pipefail
+          lake -DwarningAsError=true build Mathlib.GroupTheory.Coxeter.Dihedral 2>&1 | tee coxeter-evidence/build.log
+          lake env lean -DwarningAsError=true Mathlib/GroupTheory/Coxeter/Dihedral.lean 2>&1 | tee coxeter-evidence/direct.log
+      - name: Independently recheck the compiled module
+        shell: bash
+        run: |
+          set -euo pipefail
+          lake env leanchecker Mathlib.GroupTheory.Coxeter.Dihedral 2>&1 | tee coxeter-evidence/leanchecker.log
+      - name: Ordinary-import smoke test and selected API axiom audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > CoxeterPinnedSmoke.lean <<'EOF'
+          import Mathlib.GroupTheory.Coxeter.Dihedral
+          open CoxeterMatrix.I
+          example (m : Nat) : (CoxeterMatrix.I m).Group ≃* DihedralGroup (m + 2) :=
+            groupEquivDihedralGroup m
+          example (m : Nat) :
+              groupEquivDihedralGroup m ((CoxeterMatrix.I m).simple (0 : Fin 2)) =
+                DihedralGroup.sr 0 := by
+            simp
+          example (m : Nat) :
+              groupEquivDihedralGroup m ((CoxeterMatrix.I m).simple (1 : Fin 2)) =
+                DihedralGroup.sr 1 := by
+            simp
+          example : (DihedralGroup.r 0 : DihedralGroup 3) = DihedralGroup.r 0 := by
+            decide
+          #print axioms CoxeterMatrix.I.toDihedral
+          #print axioms CoxeterMatrix.I.toDihedral_simple_zero
+          #print axioms CoxeterMatrix.I.toDihedral_simple_one
+          #print axioms CoxeterMatrix.I.toDihedral_simple_mul_simple
+          #print axioms CoxeterMatrix.I.toDihedral_surjective
+          #print axioms CoxeterMatrix.I.toDihedral_injective
+          #print axioms CoxeterMatrix.I.groupEquivDihedralGroup
+          #print axioms CoxeterMatrix.I.groupEquivDihedralGroup_apply_simple_zero
+          #print axioms CoxeterMatrix.I.groupEquivDihedralGroup_apply_simple_one
+          EOF
+          lake env lean -DwarningAsError=true CoxeterPinnedSmoke.lean 2>&1 | tee coxeter-evidence/api-audit.log
+          python3 - <<'PY'
+          import json, pathlib, re
+          text = pathlib.Path('coxeter-evidence/api-audit.log').read_text()
+          suffixes = ['toDihedral', 'toDihedral_simple_zero', 'toDihedral_simple_one',
+                      'toDihedral_simple_mul_simple', 'toDihedral_surjective',
+                      'toDihedral_injective', 'groupEquivDihedralGroup',
+                      'groupEquivDihedralGroup_apply_simple_zero',
+                      'groupEquivDihedralGroup_apply_simple_one']
+          expected = {'CoxeterMatrix.I.' + s for s in suffixes}
+          allowed = {'propext', 'Classical.choice', 'Quot.sound'}
+          pattern = r"'([^']+)'\s+(?:depends on axioms:\s*\[([^\]]*)\]|does not depend on any axioms)"
+          records = {}
+          for name, raw in re.findall(pattern, text):
+              if name in records:
+                  raise SystemExit('duplicate axiom report: ' + name)
+              axioms = [a.strip() for a in raw.split(',') if a.strip()]
+              if set(axioms) - allowed:
+                  raise SystemExit('unexpected axiom in ' + name + ': ' + repr(axioms))
+              records[name] = axioms
+          if set(records) != expected:
+              raise SystemExit('axiom inventory mismatch: ' + repr(set(records) ^ expected))
+          if 'sorryAx' in text or 'Lean.ofReduceBool' in text:
+              raise SystemExit('forbidden proof dependency')
+          pathlib.Path('coxeter-evidence/api-axioms.json').write_text(
+              json.dumps({'scope': 'nine selected public API declarations; transitive dependencies',
+                          'source_commit': 'cad21f52e8c5664dedfcd12318e27016591aacaf',
+                          'declarations': records}, indent=2) + '\n')
+          print('PASS: nine selected public API axiom reports; only standard allowed axioms')
+          PY
+      - name: Reject a well-typed false rotation-reflection equality
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > CoxeterPinnedFalseControl.lean <<'EOF'
+          import Mathlib.GroupTheory.Coxeter.Dihedral
+          example : (DihedralGroup.r 0 : DihedralGroup 3) = DihedralGroup.sr 0 := by
+            decide
+          EOF
+          if lake env lean CoxeterPinnedFalseControl.lean > coxeter-evidence/false-control.log 2>&1; then
+            echo 'ERROR: false rotation-reflection equality accepted'
+            exit 1
+          fi
+          cat coxeter-evidence/false-control.log
+          if grep -Eiq 'unknown module|unknown identifier|object file|unexpected token|failed to synthesize|no such file' coxeter-evidence/false-control.log; then
+            echo 'ERROR: false control failed for an infrastructure reason'
+            exit 1
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('coxeter-evidence/false-control.log').read_text().lower()
+          if not ('decide' in text and 'false' in text):
+              raise SystemExit('not the expected mathematical decide rejection')
+          print('PASS: the false equality was mathematically rejected')
+          PY
+      - name: Record completion without claiming upstream acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' 'PASS: pinned public source, build, direct elaboration, independent recheck, ordinary-import smoke, selected API axiom audit, and mathematical false control.' 'This isolated fork receipt is not upstream maintainer acceptance and does not change the upstream benchmark job result.' > coxeter-evidence/RESULT.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pinned-coxeter-cad21f52-evidence
+          path: |
+            coxeter-evidence/
+            CoxeterPinnedSmoke.lean
+            CoxeterPinnedFalseControl.lean
+            Mathlib/GroupTheory/Coxeter/Dihedral.lean
+            lean-toolchain
+            lake-manifest.json
+          if-no-files-found: error
