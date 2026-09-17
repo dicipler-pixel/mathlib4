@@ -26,6 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p coxeter-evidence
+          git fetch --no-tags --depth=1 origin "$SOURCE_COMMIT"
           git diff --exit-code "$SOURCE_COMMIT" HEAD -- . ':!.github/workflows/coxeter-pinned-check.yml'
           test "$(git hash-object Mathlib/GroupTheory/Coxeter/Dihedral.lean)" = "$SOURCE_BLOB"
           {
@@ -53,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          lake -DwarningAsError=true build Mathlib.GroupTheory.Coxeter.Dihedral 2>&1 | tee coxeter-evidence/build.log
+          lake --wfail build Mathlib.GroupTheory.Coxeter.Dihedral 2>&1 | tee coxeter-evidence/build.log
           lake env lean -DwarningAsError=true Mathlib/GroupTheory/Coxeter/Dihedral.lean 2>&1 | tee coxeter-evidence/direct.log
       - name: Independently recheck the compiled module
         shell: bash
