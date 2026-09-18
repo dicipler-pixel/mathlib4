@@ -1,0 +1,18 @@
+module_exit=1
+build_exit=99
+
+=== MODULE LOG ===
+Mathlib/Algebra/Ring/Idempotent.lean:111:37: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern
+  0 * ?a
+in the target expression
+  (1 - p) * (p * (d * (1 - p))) + (1 - p) * 0 = 0
+
+R : Type u_1
+inst✝ : Ring R
+p d : R
+hp : IsIdempotentElem p
+h : p * d + d * p = d
+⊢ (1 - p) * (p * (d * (1 - p))) + (1 - p) * 0 = 0
+
+=== BUILD LOG ===
+lake build skipped because module compilation failed
