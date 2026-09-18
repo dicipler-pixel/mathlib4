@@ -3,16 +3,21 @@ name: Verify Laurent matrix determinant degree
 on:
   push:
     branches: ['verify/laurent-matrix-det-degree']
+    paths:
+      - 'Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean'
+      - 'Mathlib/Algebra/Polynomial/Laurent.lean'
+      - 'Mathlib.lean'
+      - '.github/workflows/verify-laurent-matrix-det-degree.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   statuses: write
 
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       LEAN_NUM_THREADS: 2
     steps:
@@ -32,18 +37,41 @@ jobs:
           set -euo pipefail
           export PATH="$HOME/.elan/bin:$PATH"
           lake exe cache get
-      - name: Compile exact new module
+      - name: Compile module and build
+        id: verify
+        shell: bash
+        run: |
+          export PATH="$HOME/.elan/bin:$PATH"
+          set +e
+          lake env lean Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean > "$RUNNER_TEMP/module.log" 2>&1
+          MODULE_EXIT=$?
+          if [ "$MODULE_EXIT" -eq 0 ]; then
+            lake build > "$RUNNER_TEMP/build.log" 2>&1
+            BUILD_EXIT=$?
+          else
+            BUILD_EXIT=99
+            printf 'lake build skipped because module compilation failed\n' > "$RUNNER_TEMP/build.log"
+          fi
+          {
+            printf 'module_exit=%s\nbuild_exit=%s\n\n=== MODULE LOG ===\n' "$MODULE_EXIT" "$BUILD_EXIT"
+            cat "$RUNNER_TEMP/module.log"
+            printf '\n=== BUILD LOG ===\n'
+            cat "$RUNNER_TEMP/build.log"
+          } > "$RUNNER_TEMP/verification.log"
+          cat "$RUNNER_TEMP/verification.log"
+          echo "module_exit=$MODULE_EXIT" >> "$GITHUB_OUTPUT"
+          echo "build_exit=$BUILD_EXIT" >> "$GITHUB_OUTPUT"
+          test "$MODULE_EXIT" -eq 0
+          test "$BUILD_EXIT" -eq 0
+      - name: Persist failure log
+        if: failure() && steps.verify.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          export PATH="$HOME/.elan/bin:$PATH"
-          lake env lean Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean
-      - name: Run lake build
-        shell: bash
-        run: |
-          set -euo pipefail
-          export PATH="$HOME/.elan/bin:$PATH"
-          lake build
+          CONTENT="$(base64 -w0 "$RUNNER_TEMP/verification.log")"
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/.verification/laurent-matrix-det-degree-${GITHUB_SHA}.log"             -f message="ci: record Laurent determinant verification failure"             -f content="$CONTENT"             -f branch="$GITHUB_REF_NAME"
       - name: Record verification status
         if: always()
         env:
@@ -57,6 +85,6 @@ jobs:
             description="Exact Laurent matrix module and lake build passed"
           else
             state=failure
-            description="Public Lean verification failed"
+            description="Public Lean verification failed; log committed on verify branch"
           fi
           gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}"             -f state="$state"             -f context="public-lean/laurent-matrix-det-degree"             -f description="$description"
