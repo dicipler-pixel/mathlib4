@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   verify:
@@ -37,3 +38,19 @@ jobs:
           set -euo pipefail
           export PATH="$HOME/.elan/bin:$PATH"
           lake env lean Mathlib/LinearAlgebra/Matrix/Trace.lean
+      - name: Record verification status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$JOB_STATUS" = "success" ]; then
+            state=success
+            description="Exact Matrix.Trace module compiled"
+          else
+            state=failure
+            description="Public Lean verification failed"
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}"             -f state="$state"             -f context="public-lean/matrix-trace-idempotent"             -f description="$description"
