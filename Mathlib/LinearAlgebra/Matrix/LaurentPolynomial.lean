@@ -46,7 +46,11 @@ theorem degree_det_le_sum_columns (M : Matrix n n (LaurentPolynomial R)) (d : n 
         degree (∏ i, M (σ i) i) ≤ ∑ i, degree (M (σ i) i) := by
       simpa [degree, Finset.max_eq_sup_withBot] using h
     exact h'.trans <| by
-      exact_mod_cast Finset.sum_le_sum fun i _ => hM (σ i) i
+      have hsum :
+          (∑ i in Finset.univ, degree (M (σ i) i)) ≤
+            ∑ i in Finset.univ, (d i : WithBot ℤ) :=
+        Finset.sum_le_sum fun i _ => hM (σ i) i
+      simpa only [Finset.sum_const_zero, WithBot.coe_sum] using hsum
   have hterm (σ : Equiv.Perm n) :
       degree
           (((Equiv.Perm.sign σ : ℤ) : LaurentPolynomial R) *
