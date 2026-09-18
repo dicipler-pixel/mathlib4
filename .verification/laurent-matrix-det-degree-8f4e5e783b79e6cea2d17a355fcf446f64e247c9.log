@@ -1,0 +1,16 @@
+dependency_exit=0
+module_exit=1
+build_exit=99
+
+=== DEPENDENCY LOG ===
+✔ [1420/1420] Built Mathlib.Algebra.Polynomial.Laurent (3.4s)
+Build completed successfully (1420 jobs).
+
+=== MODULE LOG ===
+Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean:49:6: error: mod_cast has type
+  ∑ i ∈ ?m.117, (M (σ i) i).degree ≤ ∑ i ∈ ?m.117, ↑(d i)
+but is expected to have type
+  ∑ i, (M (σ i) i).degree ≤ ↑(∑ i, d i)
+
+=== BUILD LOG ===
+lake build skipped because module compilation failed
