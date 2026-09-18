@@ -1,0 +1,18 @@
+dependency_exit=0
+module_exit=1
+build_exit=99
+
+=== DEPENDENCY LOG ===
+✔ [1420/1420] Built Mathlib.Algebra.Polynomial.Laurent (2.4s)
+Build completed successfully (1420 jobs).
+
+=== MODULE LOG ===
+Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean:49:6: error: Type mismatch: After simplification, term
+  Finset.sum_le_sum fun i x => hM (σ i) i
+ has type
+  ∑ i ∈ ?m.115, (M (σ i) i).degree ≤ ∑ i ∈ ?m.115, ↑(d i)
+but is expected to have type
+  ∑ i, (M (σ i) i).degree ≤ ↑(∑ i, d i)
+
+=== BUILD LOG ===
+lake build skipped because module compilation failed
