@@ -106,12 +106,8 @@ lemma mul_mul_eq_zero_of_mul_add_mul_eq (hp : IsIdempotentElem p)
 `d` vanishes. -/
 lemma one_sub_mul_mul_one_sub_eq_zero_of_mul_add_mul_eq (hp : IsIdempotentElem p)
     (h : p * d + d * p = d) : (1 - p) * d * (1 - p) = 0 := by
-  have hzero := hp.mul_mul_eq_zero_of_mul_add_mul_eq h
-  calc
-    (1 - p) * d * (1 - p) = d + d - (p * d + d * p) + p * d * p := by
-      simp only [sub_mul, one_mul, mul_sub, mul_one]
-      abel
-    _ = 0 := by rw [h, hzero]; abel
+  rw [← h]
+  simp [mul_add, add_mul, mul_assoc, hp.one_sub_mul_self, hp.mul_one_sub_self]
 
 /-- An element satisfying `p * d + d * p = d` for an idempotent `p` is the sum of its two
 off-diagonal Peirce components. -/
@@ -119,13 +115,12 @@ lemma eq_mul_one_sub_add_one_sub_mul_of_mul_add_mul_eq (hp : IsIdempotentElem p)
     (h : p * d + d * p = d) :
     d = p * d * (1 - p) + (1 - p) * d * p := by
   have hzero := hp.mul_mul_eq_zero_of_mul_add_mul_eq h
-  symm
-  calc
-    p * d * (1 - p) + (1 - p) * d * p =
-        (p * d - p * d * p) + (d * p - p * d * p) := by
-      simp only [mul_sub, mul_one, sub_mul, one_mul]
-    _ = p * d + d * p := by rw [hzero]; simp
-    _ = d := h
+  have hleft : p * d * (1 - p) = p * d := by
+    rw [mul_sub, mul_one, hzero, sub_zero]
+  have hright : (1 - p) * d * p = d * p := by
+    rw [sub_mul, one_mul, sub_mul, hzero, sub_zero]
+  rw [hleft, hright, h]
+
 
 end Ring
 
