@@ -43,8 +43,15 @@ jobs:
         run: |
           export PATH="$HOME/.elan/bin:$PATH"
           set +e
-          lake env lean Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean > "$RUNNER_TEMP/module.log" 2>&1
-          MODULE_EXIT=$?
+          lake build Mathlib.Algebra.Polynomial.Laurent > "$RUNNER_TEMP/dependency.log" 2>&1
+          DEP_EXIT=$?
+          if [ "$DEP_EXIT" -eq 0 ]; then
+            lake env lean Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean > "$RUNNER_TEMP/module.log" 2>&1
+            MODULE_EXIT=$?
+          else
+            MODULE_EXIT=98
+            printf 'new module skipped because modified Laurent dependency failed to build\n' > "$RUNNER_TEMP/module.log"
+          fi
           if [ "$MODULE_EXIT" -eq 0 ]; then
             lake build > "$RUNNER_TEMP/build.log" 2>&1
             BUILD_EXIT=$?
@@ -53,7 +60,9 @@ jobs:
             printf 'lake build skipped because module compilation failed\n' > "$RUNNER_TEMP/build.log"
           fi
           {
-            printf 'module_exit=%s\nbuild_exit=%s\n\n=== MODULE LOG ===\n' "$MODULE_EXIT" "$BUILD_EXIT"
+            printf 'dependency_exit=%s\nmodule_exit=%s\nbuild_exit=%s\n\n=== DEPENDENCY LOG ===\n' "$DEP_EXIT" "$MODULE_EXIT" "$BUILD_EXIT"
+            cat "$RUNNER_TEMP/dependency.log"
+            printf '\n=== MODULE LOG ===\n'
             cat "$RUNNER_TEMP/module.log"
             printf '\n=== BUILD LOG ===\n'
             cat "$RUNNER_TEMP/build.log"
