@@ -1,0 +1,21 @@
+module_exit=1
+build_exit=99
+
+=== MODULE LOG ===
+Mathlib/Algebra/Ring/Idempotent.lean:108:59: error: unsolved goals
+R : Type u_1
+inst✝ : Ring R
+p d : R
+hp : IsIdempotentElem p
+h : p * d + d * p = d
+⊢ (1 - p) * (p * (d * (1 - p))) = 0
+Mathlib/Algebra/Ring/Idempotent.lean:110:37: warning: This simp argument is unused:
+  hp.one_sub_mul_self
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [mul_add, add_mul, mul_assoc, hp.mul_one_sub_self]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+
+=== BUILD LOG ===
+lake build skipped because module compilation failed
