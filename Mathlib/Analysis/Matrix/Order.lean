@@ -115,6 +115,23 @@ lemma instNonnegSpectrumClass : NonnegSpectrumClass ℝ (Matrix n n 𝕜) where
 
 scoped[MatrixOrder] attribute [instance] instNonnegSpectrumClass
 
+/-- For a finite family of positive semidefinite matrices, increasing each real scalar coefficient
+increases the weighted sum in the positive-semidefinite matrix order. -/
+theorem sum_smul_le_sum_smul_of_posSemidef {ι : Type*} (s : Finset ι)
+    (A : ι → Matrix n n 𝕜) (a b : ι → ℝ)
+    (hA : ∀ i ∈ s, (A i).PosSemidef) (hab : ∀ i ∈ s, a i ≤ b i) :
+    (∑ i ∈ s, a i • A i) ≤ ∑ i ∈ s, b i • A i := by
+  rw [le_iff]
+  have hdiff :
+      (∑ i ∈ s, b i • A i) - ∑ i ∈ s, a i • A i =
+        ∑ i ∈ s, (b i - a i) • A i := by
+    rw [← Finset.sum_sub_distrib]
+    apply Finset.sum_congr rfl
+    intro i hi
+    rw [sub_smul]
+  rw [hdiff]
+  exact posSemidef_sum s fun i hi ↦ (hA i hi).smul (sub_nonneg.mpr (hab i hi))
+
 lemma instStarOrderedRing : StarOrderedRing (Matrix n n 𝕜) :=
   .of_nonneg_iff' add_le_add_right fun A ↦
     ⟨fun hA ↦ by
