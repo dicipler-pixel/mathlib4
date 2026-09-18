@@ -458,6 +458,20 @@ theorem degree_T_le (n : ℤ) : (T n : R[T;T⁻¹]).degree ≤ n :=
 theorem degree_C_le (a : R) : (C a).degree ≤ 0 :=
   (le_of_eq (by rw [T_zero, mul_one])).trans (degree_C_mul_T_le 0 a)
 
+/-- The degree of a sum of Laurent polynomials is at most the maximum of their degrees. -/
+theorem degree_add_le (f g : R[T;T⁻¹]) :
+    degree (f + g) ≤ max (degree f) (degree g) := by
+  simpa only [degree, Finset.max_eq_sup_withBot] using
+    (AddMonoidAlgebra.supDegree_add_le
+      (D := fun n : ℤ => (n : WithBot ℤ)) (f := f) (g := g))
+
+/-- The degree of a product of Laurent polynomials is at most the sum of their degrees. -/
+theorem degree_mul_le (f g : R[T;T⁻¹]) :
+    degree (f * g) ≤ degree f + degree g := by
+  simpa only [degree, Finset.max_eq_sup_withBot] using
+    (AddMonoidAlgebra.supDegree_mul_le
+      (D := fun n : ℤ => (n : WithBot ℤ)) (p := f) (q := g) (by simp))
+
 end DegreeBounds
 
 end Degrees
