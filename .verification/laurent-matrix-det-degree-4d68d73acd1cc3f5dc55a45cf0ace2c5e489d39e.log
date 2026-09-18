@@ -1,0 +1,19 @@
+dependency_exit=0
+module_exit=1
+build_exit=99
+
+=== DEPENDENCY LOG ===
+✔ [1420/1420] Built Mathlib.Algebra.Polynomial.Laurent (2.3s)
+Build completed successfully (1420 jobs).
+
+=== MODULE LOG ===
+Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean:52:18: error(lean.unknownIdentifier): Unknown constant `WithBot.coe_sum`
+Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean:52:6: error: Type mismatch: After simplification, term
+  hsum
+ has type
+  ∑ i, (M (σ i) i).degree ≤ ∑ i, ↑(d i)
+but is expected to have type
+  ∑ i, (M (σ i) i).degree ≤ ↑(∑ i, d i)
+
+=== BUILD LOG ===
+lake build skipped because module compilation failed
