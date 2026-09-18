@@ -1,0 +1,8 @@
+module_exit=1
+build_exit=99
+
+=== MODULE LOG ===
+Mathlib/LinearAlgebra/Matrix/LaurentPolynomial.lean:6:0: error: object file '/home/runner/work/mathlib4/mathlib4/.lake/build/lib/lean/Mathlib/Algebra/Polynomial/Laurent.olean' of module Mathlib.Algebra.Polynomial.Laurent does not exist
+
+=== BUILD LOG ===
+lake build skipped because module compilation failed
