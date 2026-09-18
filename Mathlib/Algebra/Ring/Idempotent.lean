@@ -108,7 +108,8 @@ lemma one_sub_mul_mul_one_sub_eq_zero_of_mul_add_mul_eq (hp : IsIdempotentElem p
     (h : p * d + d * p = d) : (1 - p) * d * (1 - p) = 0 := by
   rw [← h, mul_add, add_mul]
   rw [← mul_assoc (1 - p) p d, hp.one_sub_mul_self, zero_mul, zero_mul]
-  rw [mul_assoc ((1 - p) * d) p (1 - p), hp.mul_one_sub_self, mul_zero, add_zero]
+  rw [← mul_assoc (1 - p) d p, mul_assoc ((1 - p) * d) p (1 - p),
+    hp.mul_one_sub_self, mul_zero, add_zero]
 
 /-- An element satisfying `p * d + d * p = d` for an idempotent `p` is the sum of its two
 off-diagonal Peirce components. -/
